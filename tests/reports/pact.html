@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>契约测试报告 — NekoCafe</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; }
+  h1 { color: #333; }
+  .summary { padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;
+              background: #d4edda;
+              border: 1px solid #c3e6cb; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd; }
+  th { background: #f5f5f5; }
+  .killed td:last-child { color: #28a745; font-weight: bold; }
+  .survived td:last-child { color: #dc3545; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>契约测试报告 — NekoCafe 预约服务</h1>
+<div class="summary">
+  <p>测试总数: <strong>15</strong></p>
+  <p>通过: <strong>15</strong> | 失败: <strong>0</strong></p>
+</div>
+<table>
+<thead><tr><th>#</th><th>测试类</th><th>测试名</th><th>结果</th></tr></thead>
+<tbody>
+<tr class="killed"><td>1</td><td>tests.contract.test_contract_consumer.TestCreateReservationContract</td><td>test_response_status_201</td><td>PASSED</td></tr>
+<tr class="killed"><td>2</td><td>tests.contract.test_contract_consumer.TestCreateReservationContract</td><td>test_response_body_schema</td><td>PASSED</td></tr>
+<tr class="killed"><td>3</td><td>tests.contract.test_contract_consumer.TestCreateReservationContract</td><td>test_response_date_format</td><td>PASSED</td></tr>
+<tr class="killed"><td>4</td><td>tests.contract.test_contract_consumer.TestCreateReservationContract</td><td>test_response_time_format</td><td>PASSED</td></tr>
+<tr class="killed"><td>5</td><td>tests.contract.test_contract_consumer.TestGetReservationContract</td><td>test_get_returns_200</td><td>PASSED</td></tr>
+<tr class="killed"><td>6</td><td>tests.contract.test_contract_consumer.TestGetReservationContract</td><td>test_get_nonexistent_returns_404</td><td>PASSED</td></tr>
+<tr class="killed"><td>7</td><td>tests.contract.test_contract_consumer.TestCancelReservationContract</td><td>test_cancel_returns_204</td><td>PASSED</td></tr>
+<tr class="killed"><td>8</td><td>tests.contract.test_contract_consumer.TestCancelReservationContract</td><td>test_cancel_nonexistent_returns_404</td><td>PASSED</td></tr>
+<tr class="killed"><td>9</td><td>tests.contract.test_contract_member_consumer.TestMemberServiceContract</td><td>test_create_reservation_contract</td><td>PASSED</td></tr>
+<tr class="killed"><td>10</td><td>tests.contract.test_contract_member_consumer.TestMemberServiceContract</td><td>test_cancel_reservation_contract</td><td>PASSED</td></tr>
+<tr class="killed"><td>11</td><td>tests.contract.test_contract_member_consumer.TestMemberServiceContract</td><td>test_get_reservation_contract</td><td>PASSED</td></tr>
+<tr class="killed"><td>12</td><td>tests.contract.test_contract_reservation.TestProviderEndpoints</td><td>test_health_endpoint</td><td>PASSED</td></tr>
+<tr class="killed"><td>13</td><td>tests.contract.test_contract_reservation.TestProviderEndpoints</td><td>test_create_reservation_provider</td><td>PASSED</td></tr>
+<tr class="killed"><td>14</td><td>tests.contract.test_contract_reservation.TestProviderEndpoints</td><td>test_create_conflict_provider</td><td>PASSED</td></tr>
+<tr class="killed"><td>15</td><td>tests.contract.test_contract_reservation.TestProviderEndpoints</td><td>test_get_available_slots_provider</td><td>PASSED</td></tr>
+
+</tbody>
+</table>
+</body>
+</html>

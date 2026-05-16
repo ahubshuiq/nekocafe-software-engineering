@@ -1,0 +1,88 @@
+{{- if .Values.reservation.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation
+  namespace: {{ include "nekocafe.namespace" . }}
+  labels:
+    app: reservation
+    {{- include "nekocafe.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.reservation.replicas }}
+  selector:
+    matchLabels:
+      app: reservation
+  template:
+    metadata:
+      labels:
+        app: reservation
+    spec:
+      containers:
+        - name: reservation
+          image: "{{ .Values.reservation.image }}:{{ .Values.reservation.tag }}"
+          ports:
+            - containerPort: {{ .Values.reservation.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nekocafe-secrets
+                  key: reservation-db-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nekocafe-secrets
+                  key: redis-url-reservation
+            {{- range $key, $val := .Values.reservation.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.reservation.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.reservation.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.reservation.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation
+  namespace: {{ include "nekocafe.namespace" . }}
+spec:
+  selector:
+    app: reservation
+  ports:
+    - port: {{ .Values.reservation.port }}
+      targetPort: {{ .Values.reservation.port }}
+{{- if .Values.reservation.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: reservation-hpa
+  namespace: {{ include "nekocafe.namespace" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reservation
+  minReplicas: {{ .Values.reservation.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.reservation.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.reservation.autoscaling.targetCPUUtilization }}
+{{- end }}
+{{- end }}

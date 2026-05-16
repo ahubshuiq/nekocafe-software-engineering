@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nekocafe-ingress
+  namespace: nekocafe
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.nekocafe.local
+      http:
+        paths:
+          - path: /api/reservations
+            pathType: Prefix
+            backend:
+              service:
+                name: reservation
+                port:
+                  number: 8000
+          - path: /api/members
+            pathType: Prefix
+            backend:
+              service:
+                name: member
+                port:
+                  number: 3000

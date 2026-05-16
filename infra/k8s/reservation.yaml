@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation
+  namespace: nekocafe
+  labels:
+    app: reservation
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: reservation
+  template:
+    metadata:
+      labels:
+        app: reservation
+    spec:
+      containers:
+        - name: reservation
+          image: nekocafe/reservation:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nekocafe-secrets
+                  key: reservation-db-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nekocafe-secrets
+                  key: redis-url-reservation
+            - name: PACT_MODE
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation
+  namespace: nekocafe
+spec:
+  selector:
+    app: reservation
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: reservation-pdb
+  namespace: nekocafe
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: reservation

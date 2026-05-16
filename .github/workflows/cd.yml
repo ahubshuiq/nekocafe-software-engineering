@@ -1,0 +1,80 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-dev:
+    name: 部署至开发环境
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 部署到 dev
+        run: |
+          echo "Deploying ${{ github.sha }} to dev environment..."
+          docker compose up -d --build
+
+      - name: 冒烟验证
+        run: |
+          sleep 20
+          curl -sf http://localhost:8000/health
+          curl -sf http://localhost:3000/health
+
+  deploy-staging:
+    name: 部署至测试环境
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 部署到 staging
+        run: echo "Deploying ${{ github.sha }} to staging..."
+
+      - name: 集成验证
+        run: echo "Running integration verification on staging..."
+
+  deploy-prod-canary:
+    name: 金丝雀发布（5% 流量）
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: production-canary
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 金丝雀部署
+        run: |
+          echo "Canary deploy ${{ github.sha }} with 5% traffic..."
+          # helm upgrade --install nekocafe-canary ./infra/helm/nekocafe \
+          #   --set canary.enabled=true --set canary.weight=5
+
+      - name: 监控金丝雀（5 分钟）
+        run: |
+          for i in $(seq 1 10); do
+            sleep 30
+            echo "Canary check $i/10..."
+            # 实际场景中查询 Prometheus: P95 延迟和错误率
+          done
+
+  deploy-prod-full:
+    name: 全量发布（100% 流量）
+    runs-on: ubuntu-latest
+    needs: deploy-prod-canary
+    environment: production-full
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 全量发布
+        run: |
+          echo "Full deploy ${{ github.sha }}..."
+          # helm upgrade --install nekocafe ./infra/helm/nekocafe \
+          #   --set canary.enabled=false
+
+      - name: 清理金丝雀发布
+        run: echo "Removing canary release..."

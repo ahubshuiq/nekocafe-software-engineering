@@ -1,0 +1,158 @@
+{
+  "consumer": {
+    "name": "ReservationConsumer"
+  },
+  "provider": {
+    "name": "ReservationService"
+  },
+  "interactions": [
+    {
+      "description": "a request to create a reservation",
+      "providerState": "table 1 is available on the requested date",
+      "request": {
+        "method": "POST",
+        "path": "/api/reservations",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "member_id": 1,
+          "store_id": 1,
+          "table_id": 1,
+          "reservation_date": "2026-05-12",
+          "start_time": "18:00",
+          "guest_count": 2
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+        },
+        "body": {
+          "id": 1,
+          "member_id": 1,
+          "store_id": 1,
+          "table_id": 1,
+          "reservation_date": "2026-05-12",
+          "start_time": "18:00:00",
+          "end_time": "19:30:00",
+          "guest_count": 2,
+          "cat_preference": null,
+          "status": "CONFIRMED",
+          "deposit_amount": null,
+          "created_at": "2026-05-11T10:00:00"
+        },
+        "matchingRules": {
+          "$.body.id": {
+            "match": "type"
+          },
+          "$.body.member_id": {
+            "match": "type"
+          },
+          "$.body.store_id": {
+            "match": "type"
+          },
+          "$.body.table_id": {
+            "match": "type"
+          },
+          "$.body.reservation_date": {
+            "match": "regex",
+            "regex": "\\d{4}-\\d{2}-\\d{2}"
+          },
+          "$.body.start_time": {
+            "match": "regex",
+            "regex": "\\d{2}:\\d{2}(:\\d{2})?"
+          },
+          "$.body.end_time": {
+            "match": "regex",
+            "regex": "\\d{2}:\\d{2}(:\\d{2})?"
+          },
+          "$.body.guest_count": {
+            "match": "type"
+          },
+          "$.body.status": {
+            "match": "regex",
+            "regex": "(PENDING|CONFIRMED)"
+          },
+          "$.body.created_at": {
+            "match": "type"
+          }
+        }
+      }
+    },
+    {
+      "description": "a request to get a reservation by id",
+      "providerState": "reservation 1 exists",
+      "request": {
+        "method": "GET",
+        "path": "/api/reservations/1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+        },
+        "body": {
+          "id": 1,
+          "member_id": 1,
+          "store_id": 1,
+          "table_id": 1,
+          "reservation_date": "2026-05-12",
+          "start_time": "18:00:00",
+          "end_time": "19:30:00",
+          "guest_count": 2,
+          "cat_preference": null,
+          "status": "CONFIRMED",
+          "deposit_amount": null,
+          "created_at": "2026-05-11T10:00:00"
+        },
+        "matchingRules": {
+          "$.body.id": {
+            "match": "type"
+          },
+          "$.body.member_id": {
+            "match": "type"
+          },
+          "$.body.store_id": {
+            "match": "type"
+          },
+          "$.body.table_id": {
+            "match": "type"
+          },
+          "$.body.reservation_date": {
+            "match": "type"
+          },
+          "$.body.start_time": {
+            "match": "type"
+          },
+          "$.body.end_time": {
+            "match": "type"
+          },
+          "$.body.guest_count": {
+            "match": "type"
+          },
+          "$.body.created_at": {
+            "match": "type"
+          }
+        }
+      }
+    },
+    {
+      "description": "a request to cancel a reservation",
+      "providerState": "reservation 1 exists",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/reservations/1"
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "2.0.0"
+    }
+  }
+}

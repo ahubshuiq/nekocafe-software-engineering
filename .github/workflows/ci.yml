@@ -1,0 +1,231 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ========== 1. 代码检查（Lint） ==========
+  lint:
+    name: 代码检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查预约服务 Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: services/reservation/Dockerfile
+
+      - name: 检查会员服务 Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: services/member/Dockerfile
+
+      - name: 检查 YAML 文件
+        run: pip install yamllint && yamllint -d relaxed .
+
+  # ========== 2. 单元测试（Unit Test） ==========
+  unit-test:
+    name: 单元测试
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- 预约服务（Python） ---
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 测试预约服务
+        working-directory: services/reservation
+        run: |
+          pip install -r requirements.txt
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+
+      # --- 会员服务（Node.js） ---
+      - name: 安装 Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: services/member/package-lock.json
+
+      - name: 测试会员服务
+        working-directory: services/member
+        run: |
+          npm ci
+          npm test
+
+  # ========== 3. 静态安全扫描（SAST） ==========
+  sast:
+    name: 安全扫描
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 初始化 CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, python
+
+      - name: 执行 CodeQL 分析
+        uses: github/codeql-action/analyze@v3
+
+  # ========== 4. 构建镜像（Build） ==========
+  build:
+    name: 构建镜像
+    runs-on: ubuntu-latest
+    needs: [unit-test, sast]
+    strategy:
+      matrix:
+        service: [reservation, member]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 配置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 缓存 Docker 构建层
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache-${{ matrix.service }}
+          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ hashFiles(format('services/{0}/**', matrix.service)) }}
+          restore-keys: ${{ runner.os }}-buildx-${{ matrix.service }}-
+
+      - name: 构建镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          push: false
+          load: true
+          tags: nekocafe/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.service }}
+          cache-to: type=local,dest=/tmp/.buildx-cache-${{ matrix.service }}-new,mode=max
+
+      - name: 保存镜像
+        run: docker save nekocafe/${{ matrix.service }}:${{ github.sha }} | gzip > /tmp/${{ matrix.service }}.tar.gz
+
+      - name: 上传镜像产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp/${{ matrix.service }}.tar.gz
+
+      - name: 更新缓存
+        run: |
+          rm -rf /tmp/.buildx-cache-${{ matrix.service }}
+          mv /tmp/.buildx-cache-${{ matrix.service }}-new /tmp/.buildx-cache-${{ matrix.service }}
+
+  # ========== 5. 镜像安全扫描（Container Scan） ==========
+  container-scan:
+    name: 镜像安全扫描
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      matrix:
+        service: [reservation, member]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp
+
+      - name: 加载镜像
+        run: docker load < /tmp/${{ matrix.service }}.tar.gz
+
+      - name: Trivy 漏洞扫描
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: nekocafe/${{ matrix.service }}:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: HIGH,CRITICAL
+
+  # ========== 6. 集成测试（Integration Test） ==========
+  integration-test:
+    name: 集成测试
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载镜像
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp
+
+      - name: 加载镜像
+        run: |
+          docker load < /tmp/image-reservation/reservation.tar.gz
+          docker load < /tmp/image-member/member.tar.gz
+
+      - name: 启动完整栈
+        run: docker compose up -d
+        env:
+          DB_PASSWORD: test_password
+
+      - name: 等待服务就绪
+        run: sleep 30
+
+      - name: 健康检查
+        run: |
+          curl -sf http://localhost:8000/health
+          curl -sf http://localhost:3000/health
+
+      - name: API 冒烟测试
+        run: |
+          curl -sf http://localhost:8000/api/reservations/available?store_id=1\&reservation_date=$(date +%Y-%m-%d)\&guest_count=2
+          curl -sf http://localhost:3000/api/members/99999 || true
+
+      - name: 清理环境
+        if: always()
+        run: docker compose down -v
+
+  # ========== 7. 推送镜像（Push Image） ==========
+  push-image:
+    name: 推送镜像
+    runs-on: ubuntu-latest
+    needs: [container-scan, integration-test]
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        service: [reservation, member]
+    permissions:
+      packages: write
+    steps:
+      - name: 下载镜像
+        uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp
+
+      - name: 加载镜像
+        run: docker load < /tmp/${{ matrix.service }}.tar.gz
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 打标签并推送
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/nekocafe/${{ matrix.service }}
+          docker tag nekocafe/${{ matrix.service }}:${{ github.sha }} ${IMAGE}:${{ github.sha }}
+          docker tag nekocafe/${{ matrix.service }}:${{ github.sha }} ${IMAGE}:latest
+          docker push ${IMAGE}:${{ github.sha }}
+          docker push ${IMAGE}:latest

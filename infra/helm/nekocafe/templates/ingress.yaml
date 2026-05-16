@@ -1,0 +1,31 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nekocafe-ingress
+  namespace: {{ include "nekocafe.namespace" . }}
+  labels:
+    {{- include "nekocafe.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api/reservations
+            pathType: Prefix
+            backend:
+              service:
+                name: reservation
+                port:
+                  number: {{ .Values.reservation.port }}
+          - path: /api/members
+            pathType: Prefix
+            backend:
+              service:
+                name: member
+                port:
+                  number: {{ .Values.member.port }}
+{{- end }}

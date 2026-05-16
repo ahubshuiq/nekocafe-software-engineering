@@ -1,0 +1,80 @@
+# Default values for nekocafe
+
+namespace: nekocafe
+
+# ---------- PostgreSQL ----------
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  user: nekocafe
+  password: "changeme"
+  storage: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ---------- Redis ----------
+redis:
+  enabled: true
+  image: redis:7-alpine
+  maxmemory: 128mb
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ---------- Reservation Service ----------
+reservation:
+  enabled: true
+  image: nekocafe/reservation
+  tag: latest
+  replicas: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilization: 70
+  env:
+    PACT_MODE: "false"
+
+# ---------- Member Service ----------
+member:
+  enabled: true
+  image: nekocafe/member
+  tag: latest
+  replicas: 2
+  port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilization: 70
+
+# ---------- Ingress ----------
+ingress:
+  enabled: true
+  className: nginx
+  host: api.nekocafe.local
+  tls: false
