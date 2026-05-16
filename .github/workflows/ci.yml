@@ -248,20 +248,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 下载镜像
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp
-
-      - name: 加载镜像
-        run: |
-          docker load < /tmp/image-reservation/reservation.tar.gz
-          docker load < /tmp/image-member/member.tar.gz
-
       - name: 启动完整栈
-        run: docker compose up -d
+        run: docker compose up -d --build
         env:
           DB_PASSWORD: test_password
+          REDIS_PASSWORD: changeme
 
       - name: 等待服务就绪
         run: sleep 30
