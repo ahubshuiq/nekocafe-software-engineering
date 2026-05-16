@@ -56,13 +56,13 @@ jobs:
           --health-retries 5
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+        ports:
+          - 6379:6379
     steps:
       - uses: actions/checkout@v4
 
@@ -71,8 +71,40 @@ jobs:
 
       - name: 创建测试数据库
         run: |
-          PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe -c "CREATE DATABASE nekocafe_reservation;"
-          PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe -c "CREATE DATABASE nekocafe_member;"
+          PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe -c "CREATE DATABASE nekocafe_reservation;" || true
+          PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe -c "CREATE DATABASE nekocafe_member;" || true
+        env:
+          PGPASSWORD: test_password
+
+      - name: 初始化数据库表
+        run: |
+          # 预约库：建表 + 种子数据
+          PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe_reservation -c "
+          CREATE TABLE IF NOT EXISTS dining_table (
+            id SERIAL PRIMARY KEY, store_id INTEGER NOT NULL, table_number VARCHAR(10) NOT NULL,
+            capacity INTEGER NOT NULL, zone VARCHAR(32), status VARCHAR(20) NOT NULL DEFAULT 'IDLE'
+          );
+          CREATE TABLE IF NOT EXISTS reservation (
+            id SERIAL PRIMARY KEY, member_id INTEGER NOT NULL, store_id INTEGER NOT NULL,
+            table_id INTEGER NOT NULL, reservation_date DATE NOT NULL, start_time TIME NOT NULL,
+            end_time TIME NOT NULL, guest_count INTEGER NOT NULL, cat_preference VARCHAR(128),
+            status VARCHAR(20) NOT NULL DEFAULT 'PENDING', deposit_amount DECIMAL(10,2),
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(), cancel_reason VARCHAR(256)
+          );
+          INSERT INTO dining_table (store_id, table_number, capacity, zone) VALUES
+            (1, 'A1', 4, '撸猫区'), (1, 'A2', 2, '撸猫区'), (1, 'B1', 6, '主题包间'),
+            (1, 'B2', 8, '主题包间'), (1, 'C1', 4, '窗边区')
+          ON CONFLICT DO NOTHING;
+          "
+          # 会员库：建表
+          PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe_member -c "
+          CREATE TABLE IF NOT EXISTS member (
+            id SERIAL PRIMARY KEY, name VARCHAR(64) NOT NULL, phone VARCHAR(20) UNIQUE NOT NULL,
+            email VARCHAR(128), avatar VARCHAR(256), level VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
+            points INTEGER NOT NULL DEFAULT 0, total_spent DECIMAL(12,2) NOT NULL DEFAULT 0,
+            preferences JSONB, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+          "
         env:
           PGPASSWORD: test_password
 
@@ -87,7 +119,7 @@ jobs:
         working-directory: services/reservation
         env:
           DATABASE_URL: postgresql://nekocafe:test_password@localhost:5432/nekocafe_reservation
-          REDIS_URL: redis://:changeme@localhost:6379/0
+          REDIS_URL: redis://localhost:6379/0
         run: |
           pip install -r requirements-dev.txt
           python -m pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
@@ -104,7 +136,7 @@ jobs:
         working-directory: services/member
         env:
           DATABASE_URL: postgresql://nekocafe:test_password@localhost:5432/nekocafe_member
-          REDIS_URL: redis://:changeme@localhost:6379/1
+          REDIS_URL: redis://localhost:6379/1
         run: |
           npm ci
           npm test
