@@ -33,7 +33,7 @@ jobs:
           dockerfile: services/member/Dockerfile
 
       - name: 检查 YAML 文件
-        run: pip install yamllint && yamllint -c .yamllint.yml .
+        run: pip install yamllint && yamllint -c .yamllint.yml .github/ infra/k8s/ docker-compose.yml
 
   # ========== 2. 单元测试（Unit Test） ==========
   unit-test:

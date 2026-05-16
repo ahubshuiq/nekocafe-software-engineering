@@ -1,10 +1,16 @@
-extends: relaxed
+extends: default
 
 rules:
-  line-length:
-    max: 200
+  line-length: disable
   braces:
-    max-spaces-inside: 10
-  truthy:
-    allowed-values: ["true", "false", "yes", "no"]
-    check-keys: false
+    level: warning
+  document-start: disable
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 0
+
+ignore: |
+  infra/helm/
+  services/member/node_modules/
+  **/node_modules/
