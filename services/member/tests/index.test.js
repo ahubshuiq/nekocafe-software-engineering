@@ -3,7 +3,11 @@
  */
 
 const request = require("supertest");
-const { app } = require("../src/index");
+const { app, initDB } = require("../src/index");
+
+beforeAll(async () => {
+  await initDB();
+});
 
 describe("Member Service Smoke Tests", () => {
   test("GET /health returns UP", async () => {

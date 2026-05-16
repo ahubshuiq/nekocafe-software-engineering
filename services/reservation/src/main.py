@@ -245,7 +245,7 @@ def health_check():
 @app.post("/api/reservations", response_model=ReservationResponse, status_code=201)
 def create_reservation(req: CreateReservationRequest, db: Session = Depends(get_db)):
     log_json("INFO", "Creating reservation",
-             store_id=req.store_id, date=str(req.reservation_date), time=req.start_time)
+             store_id=req.store_id, date=str(req.reservation_date), time=req.start_time.isoformat())
 
     validate_reservation(req)
 

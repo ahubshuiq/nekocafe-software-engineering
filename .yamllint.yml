@@ -1,0 +1,10 @@
+extends: relaxed
+
+rules:
+  line-length:
+    max: 200
+  braces:
+    max-spaces-inside: 10
+  truthy:
+    allowed-values: ["true", "false", "yes", "no"]
+    check-keys: false

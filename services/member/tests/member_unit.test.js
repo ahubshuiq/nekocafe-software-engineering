@@ -168,9 +168,8 @@ describe("TC-033 密码强度", () => {
 
 describe("TC-035 积分兑换", () => {
   test("积分充足时兑换应成功", async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [{ id: 1, points: 500 }] }) // SELECT
-      .mockResolvedValueOnce({ rows: [{ id: 1, points: 300 }] }); // UPDATE
+    // UPDATE ... WHERE points >= 200 RETURNING * → 返回扣减后的结果
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, points: 300 }], rowCount: 1 });
 
     const res = await request(app)
       .post("/api/members/1/points/redeem")
@@ -188,7 +187,10 @@ describe("TC-035 积分兑换", () => {
 
 describe("TC-036 积分不足", () => {
   test("积分余额小于兑换数量应返回 400", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, points: 50 }] });
+    // UPDATE 返回空行（WHERE points >= 200 不满足）
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    // SELECT 查会员存在
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
 
     const res = await request(app)
       .post("/api/members/1/points/redeem")
@@ -199,7 +201,10 @@ describe("TC-036 积分不足", () => {
   });
 
   test("会员不存在应返回 404", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // UPDATE 返回空行
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    // SELECT 也返回空行（会员不存在）
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const res = await request(app)
       .post("/api/members/99999/points/redeem")

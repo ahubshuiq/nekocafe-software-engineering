@@ -17,6 +17,7 @@ COPY src/ ./src/
 COPY package.json ./
 
 ENV TZ=Asia/Shanghai
+# hadolint ignore=DL3018
 RUN apk add --no-cache tzdata && cp /usr/share/zoneinfo/$TZ /etc/localtime
 
 USER nekocafe

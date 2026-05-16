@@ -345,4 +345,4 @@ if (require.main === module) {
 }
 
 // 导出app，供测试文件使用
-module.exports = { app, validatePasswordStrength, connectRedis, getRedisClient: () => redisClient };
+module.exports = { app, validatePasswordStrength, connectRedis, initDB, getRedisClient: () => redisClient };
