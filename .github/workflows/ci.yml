@@ -12,7 +12,6 @@ concurrency:
 
 env:
   DB_PASSWORD: test_password
-  REDIS_PASSWORD: changeme
 
 jobs:
   # ========== 1. 代码检查（Lint） ==========
@@ -252,7 +251,6 @@ jobs:
         run: docker compose up -d --build
         env:
           DB_PASSWORD: test_password
-          REDIS_PASSWORD: changeme
 
       - name: 等待服务就绪
         run: sleep 30
@@ -266,6 +264,29 @@ jobs:
         run: |
           curl -sf http://localhost:8000/api/reservations/available?store_id=1\&reservation_date=$(date +%Y-%m-%d)\&guest_count=2
           curl -sf http://localhost:3000/api/members/99999 || true
+
+      - name: 安装 Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装 Playwright
+        run: |
+          npm install -D @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: E2E 端到端测试
+        run: npx playwright test tests/e2e/user_journey.spec.js --reporter=list
+        env:
+          RESERVATION_URL: http://localhost:8000
+          MEMBER_URL: http://localhost:3000
+
+      - name: 上传 E2E 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: playwright-report/
 
       - name: 清理环境
         if: always()

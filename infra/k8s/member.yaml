@@ -15,9 +15,22 @@ spec:
       labels:
         app: member
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: member
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: member
-          image: nekocafe/member:latest
+          image: nekocafe/member:1.0.0
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           ports:
             - containerPort: 3000
           env:
@@ -43,6 +56,9 @@ spec:
               port: 3000
             initialDelaySeconds: 20
             periodSeconds: 30
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -50,6 +66,9 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -70,6 +89,7 @@ metadata:
   namespace: nekocafe
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: member

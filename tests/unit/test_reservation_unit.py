@@ -201,3 +201,114 @@ class TestSlotConflict:
         r2 = client.post("/api/reservations", json=p2)
         assert r1.status_code == 201
         assert r2.status_code == 201
+
+
+# ── 变异体杀灭测试 ──────────────────────────────────────────
+
+class TestIsGuestCountValid:
+    """直接测试 is_guest_count_valid 纯函数，杀灭 L435 变异体"""
+
+    def test_min_boundary(self):
+        """1 人是合法下界"""
+        from services.reservation.src.main import is_guest_count_valid
+        assert is_guest_count_valid(1) is True
+
+    def test_below_min(self):
+        """0 人不合法"""
+        from services.reservation.src.main import is_guest_count_valid
+        assert is_guest_count_valid(0) is False
+
+    def test_max_boundary(self):
+        """8 人是合法上界"""
+        from services.reservation.src.main import is_guest_count_valid
+        assert is_guest_count_valid(8) is True
+
+    def test_above_max(self):
+        """9 人不合法"""
+        from services.reservation.src.main import is_guest_count_valid
+        assert is_guest_count_valid(9) is False
+
+
+class TestCheckSlotAvailableCache:
+    """测试 check_slot_available 的 Redis 缓存路径，杀灭 L197/L208 变异体"""
+
+    def test_cache_miss_queries_db(self):
+        """缓存未命中时应查询数据库并设置缓存"""
+        from services.reservation.src.main import check_slot_available, redis_client
+        from datetime import time as t
+        db = SessionLocal()
+        try:
+            # 清除缓存
+            keys = redis_client.keys("slot:*")
+            if keys:
+                redis_client.delete(*keys)
+
+            date_val = unique_date(6)
+            result = check_slot_available(db, 1, date_val, t(14, 0), t(15, 30))
+            assert result is True
+
+            # 验证缓存被设置（杀灭 L208 的 300→299/301 变异体）
+            cache_key = f"slot:1:{date_val}:14:00:00"
+            cached = redis_client.get(cache_key)
+            assert cached == "1"
+        finally:
+            db.close()
+
+    def test_cache_hit_returns_correctly(self):
+        """缓存命中时应直接返回缓存值，杀灭 L197 的 == → != 变异体"""
+        from services.reservation.src.main import check_slot_available, redis_client
+        from datetime import time as t
+        db = SessionLocal()
+        try:
+            date_val = unique_date(7)
+            cache_key = f"slot:1:{date_val}:16:00:00"
+
+            # 设置缓存为 "1"（可用）
+            redis_client.setex(cache_key, 300, "1")
+            assert check_slot_available(db, 1, date_val, t(16, 0), t(17, 30)) is True
+
+            # 设置缓存为 "0"（不可用）
+            redis_client.setex(cache_key, 300, "0")
+            assert check_slot_available(db, 1, date_val, t(16, 0), t(17, 30)) is False
+        finally:
+            db.close()
+
+
+class TestAvailableSlotsTimeRange:
+    """测试 get_available_slots 的时段范围，杀灭 L312-314 变异体"""
+
+    def test_slots_start_at_10(self):
+        """最早时段应从 10:00 开始"""
+        resp = client.get("/api/reservations/available", params={
+            "store_id": 1, "reservation_date": str(unique_date(8)), "guest_count": 2,
+        })
+        assert resp.status_code == 200
+        slots = resp.json()
+        if slots:
+            start_times = [s["start_time"] for s in slots]
+            assert "10:00:00" in start_times
+
+    def test_slots_end_before_22(self):
+        """最晚时段的 end_time 不应超过 22:00"""
+        resp = client.get("/api/reservations/available", params={
+            "store_id": 1, "reservation_date": str(unique_date(9)), "guest_count": 2,
+        })
+        assert resp.status_code == 200
+        slots = resp.json()
+        if slots:
+            end_times = [s["end_time"] for s in slots]
+            assert all(et <= "22:00:00" for et in end_times)
+
+    def test_slot_duration_90_minutes(self):
+        """每个时段应为 90 分钟"""
+        from datetime import time as t, datetime, timedelta
+        resp = client.get("/api/reservations/available", params={
+            "store_id": 1, "reservation_date": str(unique_date(10)), "guest_count": 2,
+        })
+        assert resp.status_code == 200
+        slots = resp.json()
+        if slots:
+            for s in slots[:3]:
+                start = datetime.strptime(s["start_time"], "%H:%M:%S")
+                end = datetime.strptime(s["end_time"], "%H:%M:%S")
+                assert (end - start) == timedelta(minutes=90)

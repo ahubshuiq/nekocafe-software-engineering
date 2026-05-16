@@ -12,15 +12,20 @@ import uuid
 import pytest
 from datetime import date, time, timedelta
 
-from services.reservation.src.main import (
-    app, engine, Base, SessionLocal,
-    Reservation, DiningTable, TableStatus, redis_client,
-)
+
+def _get_main():
+    """延迟导入 main 模块，确保环境变量已生效后再创建 redis_client。"""
+    from services.reservation.src.main import (
+        app, engine, Base, SessionLocal,
+        Reservation, DiningTable, TableStatus, redis_client,
+    )
+    return app, SessionLocal, Reservation, DiningTable, TableStatus, redis_client
 
 
 @pytest.fixture(autouse=True)
 def clean_database():
     """Clear reservation table and Redis cache before each test."""
+    _, SessionLocal, Reservation, _, _, redis_client = _get_main()
     db = SessionLocal()
     try:
         db.query(Reservation).delete()
@@ -39,6 +44,7 @@ def clean_database():
 @pytest.fixture(autouse=True)
 def seed_tables():
     """Ensure dining tables exist for store_id=1."""
+    _, SessionLocal, _, DiningTable, TableStatus, _ = _get_main()
     db = SessionLocal()
     try:
         existing = db.query(DiningTable).filter(DiningTable.store_id == 1).count()

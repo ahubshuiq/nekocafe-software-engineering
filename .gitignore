@@ -216,3 +216,39 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ============================================================
+# 项目特定忽略规则
+# ============================================================
+
+# Docker 镜像导出文件（太大，不应入库）
+*.tar
+*.tar.gz
+
+# Node.js
+node_modules/
+
+# 日志
+log/
+pact-mock-service.log
+
+# 测试生成报告（保留目录结构，忽略生成内容）
+tests/reports/coverage/
+tests/reports/mutation.html
+tests/reports/junit.xml
+tests/reports/coverage.xml
+tests/reports/pact.html
+tests/reports/pact.xml
+tests/reports/pacts/*.json
+
+# 截图（应放在 docs/screenshots/ 中，根目录的忽略）
+/*.jpg
+/*.png
+
+# Hypothesis 数据库
+.hypothesis/
+
+# IDE
+.idea/
+*.iml
+.vscode/

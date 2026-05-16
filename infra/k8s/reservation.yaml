@@ -15,9 +15,22 @@ spec:
       labels:
         app: reservation
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: reservation
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: reservation
-          image: nekocafe/reservation:latest
+          image: nekocafe/reservation:1.0.0
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           ports:
             - containerPort: 8000
           env:
@@ -45,6 +58,9 @@ spec:
               port: 8000
             initialDelaySeconds: 20
             periodSeconds: 30
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -52,6 +68,9 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -72,6 +91,7 @@ metadata:
   namespace: nekocafe
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: reservation

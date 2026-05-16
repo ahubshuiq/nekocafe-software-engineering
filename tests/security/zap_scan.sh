@@ -44,6 +44,7 @@ docker run --rm \
     -t "${TARGET_URL}" \
     -r "/zap/wrk/${REPORT_FILE}" \
     -w "/zap/wrk/${LOG_FILE}" \
+    -c "/zap/wrk/tests/security/zap-baseline.conf" \
     -l WARN \
     -I || true
     # || true: baseline 扫描可能返回非零退出码（发现警告/问题时不视为构建失败）

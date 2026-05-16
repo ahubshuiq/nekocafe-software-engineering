@@ -21,9 +21,13 @@ const REDIS_URL = process.env.REDIS_URL;
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX || "20"),
+  max: parseInt(process.env.DB_POOL_MAX || "5"),
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
+  query_timeout: 10000,
+});
+pool.on("error", (err) => {
+  console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", msg: "Pool idle client error", error: err.message }));
 });
 
 // ======================== Redis ========================
@@ -31,12 +35,34 @@ const pool = new Pool({
 let redisClient;
 let redisReady = false;
 
+/** 给 Promise 加超时兜底 */
+async function withTimeout(promise, ms, label = "op") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)),
+  ]);
+}
+
+/** 给 Redis 操作加超时兜底，防止命令挂起阻塞请求 */
+async function redisOp(promise, fallback = null, ms = 2000) {
+  if (!redisReady) return fallback;
+  return withTimeout(promise, ms, "redis").catch(() => fallback);
+}
+
 async function connectRedis() {
-  redisClient = redis.createClient({ url: REDIS_URL });
-  redisClient.on("error", (err) => console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", msg: "Redis error", error: err.message })));
-  await redisClient.connect();
-  redisReady = true;
-  console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: "info", service: "member", msg: "Redis connected" }));
+  try {
+    redisClient = redis.createClient({
+      url: REDIS_URL,
+      socket: { connectTimeout: 3000, commandTimeout: 2000 },
+    });
+    redisClient.on("error", (err) => console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", msg: "Redis error", error: err.message })));
+    await redisClient.connect();
+    redisReady = true;
+    console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: "info", service: "member", msg: "Redis connected" }));
+  } catch (err) {
+    console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "warn", service: "member", msg: "Redis unavailable, running without cache", error: err.message }));
+    redisReady = false;
+  }
 }
 
 // ======================== 初始化表 ========================
@@ -142,7 +168,7 @@ app.post("/api/members", async (req, res) => {
       return res.status(409).json({ error: "该手机号已注册" });
     }
 
-    const hashedPassword = password ? await bcrypt.hash(password, 12) : '';
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : '';
     const result = await pool.query(
       `INSERT INTO member (name, phone, email, password) VALUES ($1, $2, $3, $4) RETURNING *`,
       [name, phone, email || null, hashedPassword]
@@ -163,7 +189,7 @@ app.get("/api/members/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const cached = redisReady ? await redisClient.get(`member:${id}`) : null;
+    const cached = await redisOp(redisClient.get(`member:${id}`));
     if (cached) return res.json(JSON.parse(cached));
 
     const result = await pool.query("SELECT * FROM member WHERE id = $1", [id]);
@@ -172,7 +198,7 @@ app.get("/api/members/:id", async (req, res) => {
     }
 
     const member = formatMember(result.rows[0]);
-    if (redisReady) await redisClient.setEx(`member:${id}`, 300, JSON.stringify(member));
+    await redisOp(redisClient.setEx(`member:${id}`, 300, JSON.stringify(member)));
     res.json(member);
   } catch (err) {
     console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", traceId: req.traceId, msg: "Get member error", error: err.message }));
@@ -210,86 +236,125 @@ app.get("/api/members/:id/points", async (req, res) => {
 // ---------- 消费累加积分 ----------
 
 app.post("/api/members/:id/points/earn", async (req, res) => {
+  // 超时兜底：10 秒内未响应则强制返回
+  const timer = setTimeout(() => {
+    if (!res.headersSent) res.status(504).json({ error: "earn timeout" });
+  }, 10000);
   try {
     const { id } = req.params;
     const { amount } = req.body;
     if (!amount || amount <= 0) {
+      clearTimeout(timer);
       return res.status(400).json({ error: "消费金额须大于 0" });
     }
 
     const earnedPoints = Math.floor(amount);
+    console.error(`[earn] START id=${id} amount=${earnedPoints}`);
 
-    const result = await pool.query(
-      `UPDATE member
-       SET points = points + $1,
-           total_spent = total_spent + $2,
-           level = CASE
-             WHEN total_spent + $2 >= 10000 THEN 'BLACK'
-             WHEN total_spent + $2 >= 5000  THEN 'GOLD'
-             WHEN total_spent + $2 >= 2000  THEN 'SILVER'
-             ELSE level
-           END,
-           updated_at = NOW()
-       WHERE id = $3
-       RETURNING *`,
-      [earnedPoints, amount, id]
-    );
+    const client = await pool.connect();
+    let result;
+    try {
+      result = await withTimeout(
+        client.query(
+          `UPDATE member
+           SET points = points + $1,
+               total_spent = total_spent + $2,
+               level = CASE
+                 WHEN total_spent + $2 >= 10000 THEN 'BLACK'
+                 WHEN total_spent + $2 >= 5000  THEN 'GOLD'
+                 WHEN total_spent + $2 >= 2000  THEN 'SILVER'
+                 ELSE level
+               END,
+               updated_at = NOW()
+           WHERE id = $3
+           RETURNING *`,
+          [earnedPoints, amount, id]
+        ), 10000, "earn-db"
+      );
+    } finally {
+      client.release(true);
+    }
+    console.error(`[earn] DB done, rows=${result.rows.length}`);
 
     if (result.rows.length === 0) {
+      clearTimeout(timer);
       return res.status(404).json({ error: "会员不存在" });
     }
 
-    if (redisReady) await redisClient.del(`member:${id}`);
+    await redisOp(redisClient.del(`member:${id}`));
+    console.error(`[earn] Redis done`);
 
     const member = result.rows[0];
-    console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: "info", service: "member", traceId: req.traceId, msg: "Points earned", memberId: id, operation: "earn" }));
+    clearTimeout(timer);
     res.json({
       member_id: parseInt(id),
       earned_points: earnedPoints,
       total_points: member.points,
       level: member.level,
     });
+    console.error(`[earn] RESP sent`);
   } catch (err) {
-    console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", traceId: req.traceId, msg: "Earn points error", error: err.message }));
-    res.status(500).json({ error: "积分累加失败" });
+    clearTimeout(timer);
+    console.error(`[earn] ERROR: ${err.message}`);
+    if (!res.headersSent) res.status(500).json({ error: "积分累加失败" });
   }
 });
 
 // ---------- 积分兑换 ----------
 
 app.post("/api/members/:id/points/redeem", async (req, res) => {
+  const timer = setTimeout(() => {
+    if (!res.headersSent) res.status(504).json({ error: "redeem timeout" });
+  }, 10000);
   try {
     const { id } = req.params;
     const { points: redeemPoints } = req.body;
     if (!redeemPoints || redeemPoints <= 0) {
+      clearTimeout(timer);
       return res.status(400).json({ error: "兑换积分须大于 0" });
     }
+    console.error(`[redeem] START id=${id} points=${redeemPoints}`);
 
-    const result = await pool.query(
-      `UPDATE member SET points = points - $1, updated_at = NOW() WHERE id = $2 AND points >= $1 RETURNING *`,
-      [redeemPoints, id]
-    );
+    const client = await pool.connect();
+    let result;
+    try {
+      result = await withTimeout(
+        client.query(
+          `UPDATE member SET points = points - $1, updated_at = NOW() WHERE id = $2 AND points >= $1 RETURNING *`,
+          [redeemPoints, id]
+        ), 10000, "redeem-db"
+      );
+      console.error(`[redeem] DB done, rows=${result.rows.length}`);
 
-    if (result.rows.length === 0) {
-      const exists = await pool.query("SELECT id FROM member WHERE id = $1", [id]);
-      if (exists.rows.length === 0) {
-        return res.status(404).json({ error: "会员不存在" });
+      if (result.rows.length === 0) {
+        const exists = await withTimeout(
+          client.query("SELECT id FROM member WHERE id = $1", [id]), 5000, "redeem-check"
+        );
+        clearTimeout(timer);
+        if (exists.rows.length === 0) {
+          return res.status(404).json({ error: "会员不存在" });
+        }
+        return res.status(400).json({ error: "积分不足" });
       }
-      return res.status(400).json({ error: "积分不足" });
+    } finally {
+      client.release(true);
     }
 
-    if (redisReady) await redisClient.del(`member:${id}`);
+    await redisOp(redisClient.del(`member:${id}`));
+    console.error(`[redeem] Redis done`);
 
     const member = result.rows[0];
-    console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: "info", service: "member", traceId: req.traceId, msg: "Points redeemed", memberId: id, operation: "redeem" }));
+    clearTimeout(timer);
     res.json({
       member_id: parseInt(id),
       redeemed_points: redeemPoints,
       remaining_points: member.points,
     });
+    console.error(`[redeem] RESP sent`);
   } catch (err) {
-    console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", traceId: req.traceId, msg: "Redeem points error", error: err.message }));
-    res.status(500).json({ error: "积分兑换失败" });
+    clearTimeout(timer);
+    console.error(`[redeem] ERROR: ${err.message}`);
+    if (!res.headersSent) res.status(500).json({ error: "积分兑换失败" });
   }
 });
 
@@ -318,6 +383,15 @@ function formatMember(row) {
     created_at: row.created_at,
   };
 }
+// ======================== 全局错误处理 ========================
+
+process.on("uncaughtException", (err) => {
+  console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", msg: "Uncaught exception", error: err.message, stack: err.stack }));
+});
+process.on("unhandledRejection", (reason) => {
+  console.error(JSON.stringify({ timestamp: new Date().toISOString(), level: "error", service: "member", msg: "Unhandled rejection", error: String(reason) }));
+});
+
 // ======================== 启动 ========================
 
 async function start() {

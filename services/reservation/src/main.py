@@ -99,14 +99,32 @@ class Reservation(Base):
 
 # ======================== Redis ========================
 
-redis_client = redis.from_url(
-    REDIS_URL,
-    decode_responses=True,
-    socket_connect_timeout=3,
-    socket_timeout=3,
-    retry_on_timeout=True,
-    max_connections=20,
-)
+class _NullRedis:
+    """Redis 连接失败时的空对象，所有操作静默失败。"""
+    def get(self, *a, **kw): return None
+    def set(self, *a, **kw): return None
+    def setex(self, *a, **kw): return None
+    def delete(self, *a, **kw): return None
+    def keys(self, *a, **kw): return []
+    def ping(self): return True
+
+def _create_redis_client():
+    """创建 Redis 客户端，连接失败时返回空对象。"""
+    try:
+        client = redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
+            max_connections=20,
+        )
+        client.ping()
+        return client
+    except Exception:
+        return _NullRedis()
+
+redis_client = _create_redis_client()
 
 # ======================== 请求/响应模型 ========================
 

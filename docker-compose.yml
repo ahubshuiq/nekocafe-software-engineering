@@ -20,11 +20,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-changeme}
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       retries: 5
     networks:
@@ -38,7 +38,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://nekocafe:${DB_PASSWORD}@postgres:5432/nekocafe_reservation
-      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
       PACT_MODE: "false"
     depends_on:
       postgres:
@@ -63,7 +63,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://nekocafe:${DB_PASSWORD}@postgres:5432/nekocafe_member
-      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/1
+      REDIS_URL: redis://redis:6379/1
     depends_on:
       postgres:
         condition: service_healthy

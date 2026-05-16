@@ -20,6 +20,10 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            readOnlyRootFilesystem: true
           env:
             - name: POSTGRES_USER
               value: nekocafe
@@ -37,6 +41,10 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: init-sql
               mountPath: /docker-entrypoint-initdb.d
+            - name: tmp
+              mountPath: /tmp
+            - name: run-postgresql
+              mountPath: /var/run/postgresql
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "nekocafe"]
@@ -61,6 +69,10 @@ spec:
         - name: init-sql
           configMap:
             name: postgres-init
+        - name: tmp
+          emptyDir: {}
+        - name: run-postgresql
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

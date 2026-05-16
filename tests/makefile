@@ -18,3 +18,6 @@ k6 run tests/perf/reservation_load.js --out json=reports/k6.json
 
 # 安全测试
 bash tests/security/zap_scan.sh
+
+# 可访问性测试
+bash tests/a11y/run_a11y.sh
