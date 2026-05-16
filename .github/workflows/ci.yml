@@ -66,6 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 安装 PostgreSQL 客户端
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
       - name: 创建测试数据库
         run: |
           PGPASSWORD=test_password psql -h localhost -U nekocafe -d nekocafe -c "CREATE DATABASE nekocafe_reservation;"
@@ -111,6 +114,8 @@ jobs:
     name: 安全扫描
     runs-on: ubuntu-latest
     needs: lint
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v4
         with:
