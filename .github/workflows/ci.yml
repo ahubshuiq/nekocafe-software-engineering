@@ -89,8 +89,8 @@ jobs:
           DATABASE_URL: postgresql://nekocafe:test_password@localhost:5432/nekocafe_reservation
           REDIS_URL: redis://:changeme@localhost:6379/0
         run: |
-          pip install -r requirements.txt
-          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+          pip install -r requirements-dev.txt
+          python -m pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
 
       # --- 会员服务（Node.js） ---
       - name: 安装 Node.js 20
